@@ -5,6 +5,9 @@ import type React from "react"
 import { createContext, useEffect, useState } from "react"
 import type { User } from "@/types"
 
+import { useRouter } from "next/navigation";
+
+
 interface AuthContextType {
   user: User | null
   login: (email: string, password: string) => Promise<void>
@@ -25,10 +28,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
+
   useEffect(() => {
     // Check if user is logged in on initial load
     const token = localStorage.getItem("token")
-
+    console.log("Found token in localStorage:", token)
     if (token) {
       fetchUserProfile(token)
     } else {
@@ -74,7 +78,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const data = await response.json()
-    localStorage.setItem("token", data.token)
+    console.log("Login response data:", data)
+    localStorage.setItem("token", data.access_token)
     setUser(data.user)
   }
 
@@ -97,10 +102,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user)
   }
 
-  const logout = () => {
-    localStorage.removeItem("token")
-    setUser(null)
-  }
+
+    const logout = async () => {
+      // if you ever stored a copy in localStorage, clear it too
+      localStorage.removeItem("token");
+
+      await fetch("/api/auth/logout", { method: "POST" });
+
+      // clear client state and navigate
+      setUser(null);
+      // router.replace("/login");
+      window.location.reload();
+
+    };
+
 
   return <AuthContext.Provider value={{ user, login, register, logout, isLoading }}>{children}</AuthContext.Provider>
 }

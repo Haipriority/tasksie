@@ -12,10 +12,11 @@ export function getAuthToken(request: Request): string | null {
 
 // Verify JWT token and return decoded payload
 export function verifyToken(token: string) {
+  console.log("Verifying jwt:", process.env.JWT_SECRET)
   try {
     return verify(token, process.env.JWT_SECRET || "your-secret-key")
   } catch (error) {
-    return null
+    return error
   }
 }
 

@@ -1,63 +1,36 @@
-import { NextResponse } from "next/server"
-import bcrypt from "bcryptjs"
-import { v4 as uuidv4 } from "uuid"
-import { sign } from "jsonwebtoken"
+// app/api/auth/register/route.ts
+import { NextResponse } from "next/server";
 
-// In a real app, this would be a database
-const users = []
+const API_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:3001";
+
+export const runtime = "nodejs"; // (optional) ensure Node runtime
 
 export async function POST(request: Request) {
   try {
-    const { name, email, password } = await request.json()
-
-    // Validate input
-    if (!name || !email || !password) {
-      return NextResponse.json({ error: "Name, email and password are required" }, { status: 400 })
+    const { email, password } = await request.json();
+    if (!email || !password) {
+      return NextResponse.json(
+        { error: "Email and password are required" },
+        { status: 400 }
+      );
     }
 
-    // Check if user already exists
-    const existingUser = users.find((user) => user.email === email)
-    if (existingUser) {
-      return NextResponse.json({ error: "User with this email already exists" }, { status: 409 })
-    }
+    const res = await fetch(`${API_URL}/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+      // cache: "no-store", // optional
+    });
 
-    // Hash password
-    const salt = await bcrypt.genSalt(10)
-    const hashedPassword = await bcrypt.hash(password, salt)
-
-    // Create new user
-    const newUser = {
-      id: uuidv4(),
-      name,
-      email,
-      password: hashedPassword,
-      createdAt: new Date().toISOString(),
-    }
-
-    // Save user (in a real app, this would be saved to a database)
-    users.push(newUser)
-
-    // Create JWT token
-    const token = sign({ userId: newUser.id, email: newUser.email }, process.env.JWT_SECRET || "your-secret-key", {
-      expiresIn: "24h",
-    })
-
-    // Return user data (without password) and token
-    return NextResponse.json(
-      {
-        user: {
-          id: newUser.id,
-          name: newUser.name,
-          email: newUser.email,
-          createdAt: newUser.createdAt,
-        },
-        token,
-      },
-      { status: 201 },
-    )
-  } catch (error) {
-    console.error("Registration error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const data = await res.json().catch(() => ({}));
+    return NextResponse.json(data, { status: res.status });
+  } catch (err) {
+    console.error("Register proxy error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
+// Optional: quick GET to verify the route exists in dev
+export async function GET() {
+  return NextResponse.json({ ok: true });
+}
