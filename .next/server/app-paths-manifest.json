@@ -1,8 +1,7 @@
 {
+  "/tasks/[id]/edit/page": "app/tasks/[id]/edit/page.js",
+  "/api/auth/me/route": "app/api/auth/me/route.js",
+  "/api/tasks/[id]/route": "app/api/tasks/[id]/route.js",
   "/dashboard/page": "app/dashboard/page.js",
-  "/login/page": "app/login/page.js",
-  "/api/auth/logout/route": "app/api/auth/logout/route.js",
-  "/api/auth/login/route": "app/api/auth/login/route.js",
-  "/api/tasks/route": "app/api/tasks/route.js",
-  "/tasks/new/page": "app/tasks/new/page.js"
+  "/api/tasks/route": "app/api/tasks/route.js"
 }

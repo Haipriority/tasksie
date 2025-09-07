@@ -19,17 +19,19 @@ export default function EditTaskPage({ params }: { params: { id: string } }) {
   const taskId = params.id
 
   useEffect(() => {
+    console.log("Fetching task with ID:", taskId)
     const loadTask = async () => {
       try {
         const data = await fetchTask(taskId)
         setTask(data)
       } catch (error) {
+        console.log("Error fetching task:", error)
         toast({
           title: "Error",
           description: "Failed to load task. Please try again.",
           variant: "destructive",
         })
-        router.push("/dashboard")
+        // router.push("/dashboard")
       } finally {
         setIsLoading(false)
       }

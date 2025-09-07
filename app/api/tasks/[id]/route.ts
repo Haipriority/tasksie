@@ -1,136 +1,148 @@
-import { NextResponse } from "next/server"
-import { verify } from "jsonwebtoken"
-import { getAuthToken } from "@/lib/auth-utils"
+// app/api/tasks/[id]/route.ts
+import { NextResponse } from "next/server";
+import { verify } from "jsonwebtoken";
+import { getAuthToken } from "@/lib/auth-utils";
 
-// In a real app, this would be a database
-const tasks = []
+export const runtime = "nodejs"; // jsonwebtoken requires Node
 
-// GET a specific task
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+// helper to extract userId from token
+function getUserIdFromToken(token: string): string | null {
   try {
-    const taskId = params.id
-
-    // Get token from request
-    const token = getAuthToken(request)
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
-
-    // Verify token
-    let decoded
-    try {
-      decoded = verify(token, process.env.JWT_SECRET || "your-secret-key")
-    } catch (error) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
-    }
-
-    // Find task
-    const task = tasks.find((task) => task.id === taskId)
-    if (!task) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 })
-    }
-
-    // Check if task belongs to user
-    if (task.userId !== decoded.userId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-    }
-
-    return NextResponse.json(task)
-  } catch (error) {
-    console.error("Get task error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const decoded = verify(token, process.env.JWT_SECRET || "your-secret-key") as any;
+    return decoded?.userId ?? decoded?.sub ?? null;
+  } catch {
+    return null;
   }
 }
 
-// PATCH update a task
+const API_URL =
+  process.env.BACKEND_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "http://localhost:3001"; // include global prefix here if you use one (e.g. http://localhost:3001/api)
+
+function unauthorized() {
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+function invalidToken() {
+  return NextResponse.json({ error: "Invalid token" }, { status: 401 });
+}
+
+function requireAuth(request: Request): { token: string } | NextResponse {
+  const token = getAuthToken(request);
+  if (!token) return unauthorized();
+  try {
+    // optional local verification; remove if you only want to forward
+    verify(token, process.env.JWT_SECRET || "your-secret-key");
+    return { token };
+  } catch {
+    return invalidToken();
+  }
+}
+
+async function forwardJson(res: Response) {
+  const text = await res.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text ? { message: text } : null;
+  }
+  return NextResponse.json(data ?? {}, { status: res.status });
+}
+
+// ---- GET /api/tasks/[id] ----
+export async function GET(_request: Request, { params }: { params: { id: string } }) {
+  try {
+    const auth = requireAuth(_request);
+    if (auth instanceof NextResponse) return auth;
+    // no need to re-verify token here if you want—backend will enforce auth
+    const res = await fetch(`${API_URL}/tasks/${params.id}`, {
+      method: "GET",
+      headers: { 
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${auth.token}`,
+       },
+      cache: "no-store",
+    });
+    // console.log("Fetching task wirh ID:", params.id);
+    return forwardJson(res);
+  } catch (err) {
+    console.error("Proxy GET task error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+// ---- PATCH /api/tasks/[id] ----
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
   try {
-    const taskId = params.id
+    const auth = requireAuth(request);
+    if (auth instanceof NextResponse) return auth;
 
-    // Get token from request
-    const token = getAuthToken(request)
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const body = await request.json().catch(() => ({}));
 
-    // Verify token
-    let decoded
-    try {
-      decoded = verify(token, process.env.JWT_SECRET || "your-secret-key")
-    } catch (error) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
-    }
+    console.log("Edit")
 
-    // Find task
-    const taskIndex = tasks.findIndex((task) => task.id === taskId)
-    if (taskIndex === -1) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 })
-    }
+    const res = await fetch(`${API_URL}/tasks/${params.id}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${auth.token}`,
+      },
+      body: JSON.stringify(body),
+    });
 
-    // Check if task belongs to user
-    if (tasks[taskIndex].userId !== decoded.userId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-    }
-
-    // Get update data
-    const { title, description, status } = await request.json()
-
-    // Update task
-    const updatedTask = {
-      ...tasks[taskIndex],
-      title: title !== undefined ? title : tasks[taskIndex].title,
-      description: description !== undefined ? description : tasks[taskIndex].description,
-      status: status !== undefined ? status : tasks[taskIndex].status,
-      updatedAt: new Date().toISOString(),
-    }
-
-    // Save updated task
-    tasks[taskIndex] = updatedTask
-
-    return NextResponse.json(updatedTask)
-  } catch (error) {
-    console.error("Update task error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return forwardJson(res);
+  } catch (err) {
+    console.error("Proxy PATCH task error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// DELETE a task
+// app/api/tasks/[id]/route.ts (DELETE)
+
+function userIdFromToken(token: string): string | null {
+  try {
+    const decoded: any = verify(token, process.env.JWT_SECRET || "your-secret-key");
+    return decoded?.userId ?? decoded?.sub ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
-    const taskId = params.id
+    const auth = requireAuth(request);
+    if (auth instanceof NextResponse) return auth;
 
-    // Get token from request
-    const token = getAuthToken(request)
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const urlObj = new URL(request.url);
+    const qsUserId = urlObj.searchParams.get("userId");
+    const tokenUserId = userIdFromToken(auth.token);
+    const userId = qsUserId ?? tokenUserId;
+
+    if (!userId) {
+      return NextResponse.json({ error: "userId is required" }, { status: 400 });
     }
 
-    // Verify token
-    let decoded
-    try {
-      decoded = verify(token, process.env.JWT_SECRET || "your-secret-key")
-    } catch (error) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
-    }
+    // Preferred: query-param style (avoids 404 when backend doesn’t define a path param)
+    const backendUrl = `${API_URL}/tasks/${encodeURIComponent(params.id)}?userId=${encodeURIComponent(userId)}`;
 
-    // Find task
-    const taskIndex = tasks.findIndex((task) => task.id === taskId)
-    if (taskIndex === -1) {
-      return NextResponse.json({ error: "Task not found" }, { status: 404 })
-    }
 
-    // Check if task belongs to user
-    if (tasks[taskIndex].userId !== decoded.userId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 })
-    }
+    // If your Nest route is /tasks/:id/:userId instead, use this:
+    // const backendUrl = `${API_URL}/tasks/${encodeURIComponent(params.id)}/${encodeURIComponent(userId)}`;
 
-    // Remove task
-    tasks.splice(taskIndex, 1)
+    // Helpful debugging log (appears in Next server logs)
+    console.log("[DELETE /api/tasks/[id]] →", backendUrl);
 
-    return NextResponse.json({ success: true })
-  } catch (error) {
-    console.error("Delete task error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    const res = await fetch(backendUrl, {
+      method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${auth.token}`,
+      },
+    });
+
+    return forwardJson(res);
+  } catch (err) {
+    console.error("Proxy DELETE task error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-
