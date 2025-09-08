@@ -1,39 +1,56 @@
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
-import { verifyToken } from "./lib/auth-utils"
+// middleware.ts
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { jwtVerify } from "jose";
 
-// List of paths that require authentication
-const protectedPaths = ["/dashboard", "/tasks"]
+// Paths
+const protectedPaths = ["/dashboard", "/tasks"];
+const authPaths = ["/login", "/register"];
 
-// List of paths that are accessible only to non-authenticated users
-const authPaths = ["/login", "/register"]
+async function isValidJWT(token: string | undefined) {
+  if (!token) return false;
+  const secret = process.env.JWT_SECRET; // must be defined
+  if (!secret) {
+    // Fail closed if secret missing
+    return false;
+  }
+  try {
+    const key = new TextEncoder().encode(secret);
+    await jwtVerify(token, key); // throws on invalid/expired
+    return true;
+  } catch {
+    return false;
+  }
+}
 
-export function middleware(request: NextRequest) {
-  const token = request.cookies.get("token")?.value
-  const isAuthenticated = token && verifyToken(token)
-  const path = request.nextUrl.pathname
+export async function middleware(request: NextRequest) {
+  const path = request.nextUrl.pathname;
 
-  // Check if the path is protected and user is not authenticated
-  const isProtectedPath = protectedPaths.some(
-    (protectedPath) => path === protectedPath || path.startsWith(`${protectedPath}/`),
-  )
+  const isProtectedPath =
+    protectedPaths.some(p => path === p || path.startsWith(`${p}/`));
 
-  if (isProtectedPath && !isAuthenticated) {
-    const url = new URL("/login", request.url)
-    url.searchParams.set("from", request.nextUrl.pathname)
-    return NextResponse.redirect(url)
+  const isAuthPath =
+    authPaths.some(p => path === p); // only exact /login or /register
+
+  const token = request.cookies.get("token")?.value;
+
+  const authenticated = await isValidJWT(token);
+
+  // If visiting a protected path and not authenticated → redirect to login
+  if (isProtectedPath && !authenticated) {
+    const url = new URL("/login", request.url);
+    url.searchParams.set("from", path);
+    return NextResponse.redirect(url);
   }
 
-  // Check if the path is for non-authenticated users and user is authenticated
-  const isAuthPath = authPaths.some((authPath) => path === authPath)
-  if (isAuthPath && isAuthenticated) {
-    return NextResponse.redirect(new URL("/dashboard", request.url))
+  // If visiting login/register and already authenticated → go to dashboard
+  if (isAuthPath && authenticated) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  return NextResponse.next()
+  return NextResponse.next();
 }
 
 export const config = {
   matcher: ["/dashboard/:path*", "/tasks/:path*", "/login", "/register"],
-}
-
+};

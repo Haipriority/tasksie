@@ -33,6 +33,7 @@ export function TaskList({ tasks, onTasksChange }: TaskListProps) {
   const { toast } = useToast()
 
   const handleEditTask = (taskId: string) => {
+    console.log("Editing task with ID:", taskId)
     router.push(`/tasks/${taskId}/edit`)
   }
 

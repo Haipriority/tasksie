@@ -57,3 +57,6 @@ client/coverage/
 # Misc
 *.swp
 *.swo
+
+# Next
+.next

@@ -26,7 +26,8 @@ export default function LoginPage() {
 
     try {
       await login(email, password)
-      router.push("/dashboard")
+      console.log("Login successful, redirecting to dashboard")
+      router.push('/dashboard');
     } catch (error) {
       toast({
         title: "Authentication Error",

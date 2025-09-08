@@ -19,6 +19,7 @@ export default function Dashboard() {
   const { toast } = useToast()
 
   useEffect(() => {
+    console.log("Current user:", user)
     if (!user) {
       router.push("/login")
       return

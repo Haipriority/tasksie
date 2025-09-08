@@ -1,82 +1,76 @@
-import { NextResponse } from "next/server"
-import { verify } from "jsonwebtoken"
-import { v4 as uuidv4 } from "uuid"
-import { getAuthToken } from "@/lib/auth-utils"
+// app/api/tasks/route.ts
+import { NextResponse } from "next/server";
+import { getAuthToken } from "@/lib/auth-utils";
 
-// In a real app, this would be a database
-const tasks = [];
+// jsonwebtoken not needed if we just forward; keep Node runtime if you use other Node libs
+export const runtime = "nodejs";
 
-// GET all tasks for the authenticated user
+const API_URL =
+  process.env.BACKEND_URL ??
+  process.env.NEXT_PUBLIC_API_BASE_URL ??
+  "http://localhost:3001"; // include global prefix here if you use one, e.g. http://localhost:3001/api
+
+function unauthorized() {
+  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+
+async function forwardJson(res: Response) {
+  const text = await res.text();
+  let data: any = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text ? { message: text } : null;
+  }
+  return NextResponse.json(data ?? {}, { status: res.status });
+}
+
+// ---- GET /api/tasks ---- (list current user's tasks)
 export async function GET(request: Request) {
   try {
-    // Get token from request
-    const token = getAuthToken(request)
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-    }
+    const token = getAuthToken(request);
+    if (!token) return unauthorized();
 
-    // Verify token
-    let decoded;
-    try {
-      decoded = verify(token, process.env.JWT_SECRET || "your-secret-key")
-    } catch (error) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
-    }
+    const res = await fetch(`${API_URL}/tasks`, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
 
-    // Get user's tasks
-    const userTasks = tasks.filter((task) => task.userId === decoded.userId)
-
-    return NextResponse.json(userTasks)
+    return forwardJson(res);
   } catch (error) {
-    console.error("Get tasks error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Proxy GET /tasks error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// POST create a new task
+// ---- POST /api/tasks ---- (create a task)
 export async function POST(request: Request) {
   try {
-    // Get token from request
-    const token = getAuthToken(request)
-    if (!token) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    const token = getAuthToken(request);
+    if (!token) return unauthorized();
+
+    const body = await request.json().catch(() => ({}));
+    // Optional light validation (backend should also validate)
+    if (!body?.title || typeof body.title !== "string") {
+      return NextResponse.json({ error: "Title is required" }, { status: 400 });
     }
 
-    // Verify token
-    let decoded
-    try {
-      decoded = verify(token, process.env.JWT_SECRET || "your-secret-key")
-    } catch (error) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 })
-    }
+    const res = await fetch(`${API_URL}/tasks`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(body), // { title, description?, status? }
+    });
 
-    // Get task data from request
-    const { title, description, status } = await request.json()
-
-    // Validate input
-    if (!title) {
-      return NextResponse.json({ error: "Title is required" }, { status: 400 })
-    }
-
-    // Create new task
-    const now = new Date().toISOString()
-    const newTask = {
-      id: uuidv4(),
-      title,
-      description: description || "",
-      status: status || "open",
-      createdAt: now,
-      updatedAt: now,
-      userId: decoded.userId,
-    }
-
-    // Save task (in a real app, this would be saved to a database)
-    tasks.push(newTask)
-
-    return NextResponse.json(newTask, { status: 201 })
+    return forwardJson(res);
   } catch (error) {
-    console.error("Create task error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    console.error("Proxy POST /tasks error:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-
